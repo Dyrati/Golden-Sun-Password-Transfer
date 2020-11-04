@@ -206,6 +206,7 @@ function readfile(filename)
     return data
 end
 
+
 function inputPassword(password)  -- Thanks to Straylite and Teaman for this function
     local chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz!?#&$%+="
     local addr = 0x0200A74A
@@ -217,6 +218,7 @@ function inputPassword(password)  -- Thanks to Straylite and Teaman for this fun
         end
     end
 end
+
 
 function timedMessage(x, y)
     function draw(self)
@@ -235,11 +237,11 @@ end
 
 print("Golden Sun Password Generator")
 print("")
-print("shift+C to copy password")
 print("shift+R to cycle through gold, silver, bronze")
-print("shift+V to paste password directly into game")
-print("shift+P to print password to the console")
-print("")
+print("shift+C to copy password (GS1 only)")
+print("shift+V to paste password directly into game (GS2 only)")
+print("shift+P to print most recent password to the console")
+
 
 key = {}
 guimessage = timedMessage(2, 2)
@@ -248,6 +250,7 @@ passwordtier = 0
 tierlist = {[0]="gold", "silver", "bronze"}
 guimessage:new(tierlist[passwordtier].." password selected", 120)
 password = ""
+
 
 while true do
     tmpkeys = input.get()
@@ -287,6 +290,7 @@ while true do
         end
         if key["P"] == 1 then
             if password == "" then password = readfile("gspassword.txt") end
+            print("")
             for i=1,#password,10 do
                 print(password:sub(i, i+4), password:sub(i+5, i+9))
             end
