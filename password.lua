@@ -197,14 +197,20 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
 end
 
 
-function writefile(filename, data)
-    local checkdir = io.open("password.lua", "r")  -- check that the working directory hasn't changed during runtime
-    if checkdir ~= nil then
-        checkdir:close()
-        local file = assert(io.open(filename, "w"))
-        file:write(data)
+function filecheck(filename)
+    local file = io.open(filename, "r")
+    if file ~= nil then
         file:close()
+        return true
+    else
+        return false
     end
+end
+
+function writefile(filename, data)
+    local file = assert(io.open(filename, "w"))
+    file:write(data)
+    file:close()
 end
 
 function readfile(filename)
@@ -225,6 +231,7 @@ function inputPassword(password)  -- Thanks to Straylite and Teaman for this fun
         if letterID ~= nil then --Skip spaces, line breaks, etc.
             memory.writebyte(addr, letterID - 1)
             addr = addr + 1
+            if addr == 0x0200A84E then break end
         end
     end
 end
@@ -245,13 +252,13 @@ function timedMessage(x, y)
 end
 
 
-print("Golden Sun Password Generator")
+print("Golden Sun Password Transfer")
 print("")
 print("shift+C to copy password (GS1 only)")
 print("shift+V to paste password directly into game (GS2 only)")
 print("shift+R to cycle through gold, silver, bronze")
 print("shift+P to print most recent password to the console")
-print("to edit the password string, save it to \"gspassword.txt\"")
+print("shift+O to open password file for direct editing")
 
 
 key = {}
@@ -289,8 +296,10 @@ while true do
         if key["C"] == 1 then
             if ROM == "Golden_Sun_A" then
                 password = getpassword(tierlist[passwordtier], getdata())
-                writefile("gspassword.txt", password)
                 guimessage:new("saved "..tierlist[passwordtier].." password", 120)
+                if filecheck("password.lua") then  -- check that working directory has not changed during runtime
+                    writefile("gspassword.txt", password)
+                end
             else
                 guimessage:new("Error: Golden Sun not running", 120)
             end
@@ -316,9 +325,18 @@ while true do
                 print(line)
             end
         end
+        if key["O"] == 1 then
+            if filecheck("password.lua") then
+                if not filecheck("gspassword.txt") then
+                    io.open("gspassword.txt", "w"):close()
+                end
+                os.execute("start gspassword.txt")
+            else
+                print("Error: working directory changed during runtime. Restart script to fix")
+            end
+        end
     end
 
     guimessage:draw()
     emu.frameadvance()
-
 end
