@@ -12,14 +12,14 @@ end
 
 
 function bitarray()
-    function write(self, value, size, pos)
+    local function write(self, value, size, pos)
         pos = pos or #self.bits+1
         size = size or 1
         for i=1,size do
             self.bits[pos + i-1] = bit.band(bit.rshift(value, size-i), 1)
         end
     end
-    function sub(self, min, max)
+    local function sub(self, min, max)
         if max == nil then return self.bits[min] or 0 end
         local acc = 0
         for i=0,max-min do
@@ -39,12 +39,12 @@ function getdata()
     local items = {}
     local coins = 0
 
-    events = bit.bor(events, bit.lshift(getFlag(0x941), 0))
-    events = bit.bor(events, bit.lshift(getFlag(0x951), 1))
-    events = bit.bor(events, bit.lshift(getFlag(0x8B3), 2))
-    events = bit.bor(events, bit.lshift(getFlag(0x8D1), 3))
-    events = bit.bor(events, bit.lshift(getFlag(0x81E), 4))
-    events = bit.bor(events, bit.lshift(getFlag(0x868), 5))
+    events = bit.bor(events, bit.lshift(getFlag(0x941), 0))  -- Save Hammet
+    events = bit.bor(events, bit.lshift(getFlag(0x951), 1))  -- Beat Colosso
+    events = bit.bor(events, bit.lshift(getFlag(0x8B3), 2))  -- Save Hsu
+    events = bit.bor(events, bit.lshift(getFlag(0x8D1), 3))  -- Beat Deadbeard
+    events = bit.bor(events, bit.lshift(getFlag(0x81E), 4))  -- Return to Vale
+    events = bit.bor(events, bit.lshift(getFlag(0x868), 5))  -- Return to Vault
     coins = memory.readdword(0x02000250)
 
     for i=0,3 do
@@ -140,6 +140,7 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
     end
 
     bits:write(0, 8*size - #bits.bits)
+
     local xsum = 0xFFFF
     for i=0,size-1 do
         local byte = bits:sub(8*i+1, 8*i+8)
@@ -188,22 +189,31 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
     for i=0,count-1 do
         local charpos = out:sub(8*i+1, 8*i+8) + 1
         table.insert(password, chars:sub(charpos, charpos))
+        if i%10 == 9 then table.insert(password, "\n")
+        elseif i%5 == 4 then table.insert(password, " ")
+        end
     end
     return table.concat(password)
 end
 
 
 function writefile(filename, data)
-    local file = assert(io.open(filename, "w"))
-    file:write(data)
-    file:close()
+    local checkdir = io.open("password.lua", "r")  -- check that the working directory hasn't changed during runtime
+    if checkdir ~= nil then
+        checkdir:close()
+        local file = assert(io.open(filename, "w"))
+        file:write(data)
+        file:close()
+    end
 end
 
 function readfile(filename)
-    local file = assert(io.open(filename, "r"))
-    local data = file:read("*all")
-    file:close()
-    return data
+    local file = io.open(filename, "r")
+    if file ~= nil then
+        local data = file:read("*all")
+        file:close()
+        return data
+    end
 end
 
 
@@ -221,13 +231,13 @@ end
 
 
 function timedMessage(x, y)
-    function draw(self)
+    local function draw(self)
         if self.time > 0 then
             gui.text(self.x, self.y, self.message)
             self.time = self.time - 1
         end
     end
-    function new(self, message, time)
+    local function new(self, message, time)
         self.message = message
         self.time = time
     end
@@ -237,19 +247,28 @@ end
 
 print("Golden Sun Password Generator")
 print("")
-print("shift+R to cycle through gold, silver, bronze")
 print("shift+C to copy password (GS1 only)")
 print("shift+V to paste password directly into game (GS2 only)")
+print("shift+R to cycle through gold, silver, bronze")
 print("shift+P to print most recent password to the console")
+print("to edit the password string, save it to \"gspassword.txt\"")
 
 
 key = {}
 guimessage = timedMessage(2, 2)
 
 passwordtier = 0
-tierlist = {[0]="gold", "silver", "bronze"}
+tierlist = {[0]="Gold", "Silver", "Bronze"}
 guimessage:new(tierlist[passwordtier].." password selected", 120)
-password = ""
+
+file = io.open("gspassword.txt", "r")
+if file == nil then
+    io.open("gspassword.txt", "w"):close()
+    password = ""
+else
+    password = file:read("*all")
+    file:close()
+end
 
 
 while true do
@@ -281,7 +300,8 @@ while true do
             guimessage:new(tierlist[passwordtier].." password selected", 120)
         end
         if key["V"] == 1 then
-            if password == "" then password = readfile("gspassword.txt") end
+            data = readfile("gspassword.txt")
+            if data and data ~= "" then password = data end
             if ROM == "GOLDEN_SUN_B" then
                 if memory.readword(0x02000420) == 0 then
                     inputPassword(password)
@@ -289,14 +309,16 @@ while true do
             end
         end
         if key["P"] == 1 then
-            if password == "" then password = readfile("gspassword.txt") end
+            data = readfile("gspassword.txt")
+            if data and data ~= "" then password = data end
             print("")
-            for i=1,#password,10 do
-                print(password:sub(i, i+4), password:sub(i+5, i+9))
+            for line in string.gmatch(password, "[^\n]+") do
+                print(line)
             end
         end
     end
 
     guimessage:draw()
     emu.frameadvance()
+
 end
