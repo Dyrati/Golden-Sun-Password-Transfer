@@ -1,3 +1,4 @@
+-- bizhawk compatibility
 if not memory.readword then memory.readword = memory.read_u16_le end
 if not memory.readdword then memory.readdword = memory.read_u32_le end
 if not memory.writeword then memory.writeword = memory.write_u16_le end
@@ -11,7 +12,7 @@ function getFlag(flag)
 end
 
 
-function bitarray()
+function bitarray()  -- data type for storing binary data
     local function write(self, value, size, pos)
         pos = pos or #self.bits+1
         size = size or 1
@@ -34,18 +35,10 @@ end
 function getdata()
     local levels = {}
     local djinn = {0, 0, 0, 0}
-    local events = 0
+    local events = {}
     local stats = {}
     local items = {}
     local coins = 0
-
-    events = bit.bor(events, bit.lshift(getFlag(0x941), 0))  -- Save Hammet
-    events = bit.bor(events, bit.lshift(getFlag(0x951), 1))  -- Beat Colosso
-    events = bit.bor(events, bit.lshift(getFlag(0x8B3), 2))  -- Save Hsu
-    events = bit.bor(events, bit.lshift(getFlag(0x8D1), 3))  -- Beat Deadbeard
-    events = bit.bor(events, bit.lshift(getFlag(0x81E), 4))  -- Return to Vale
-    events = bit.bor(events, bit.lshift(getFlag(0x868), 5))  -- Return to Vault
-    coins = memory.readdword(0x02000250)
 
     for i=0,3 do
         local base = 0x02000500 + 0x14C*i
@@ -68,6 +61,17 @@ function getdata()
         table.insert(items, pcitems)
     end
 
+    events = {
+        getFlag(0x941),  -- Save Hammet
+        getFlag(0x951),  -- Beat Colosso
+        getFlag(0x8B3),  -- Save Hsu
+        getFlag(0x8D1),  -- Beat Deadbeard
+        getFlag(0x81E),  -- Return to Vale
+        getFlag(0x868)   -- Return to Vault
+    }
+
+    coins = memory.readdword(0x02000250)
+
     return levels, djinn, events, stats, items, coins
 end
 
@@ -76,18 +80,21 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
     passwordtier = passwordtier:lower()
     local bits = bitarray()
 
-    local tmparray = bitarray()
-    for i=4,1,-1 do tmparray:write(djinn[i], 7) end
-    for i=4,1,-1 do tmparray:write(levels[i], 7) end
-    local swap1, swap2 = tmparray:sub(25,28), tmparray:sub(29,32)
-    tmparray:write(swap2, 4, 25); tmparray:write(swap1, 4, 29)
-    for i=56,1,-8 do bits:write(tmparray:sub(i-7,i), 8) end
-    bits:write(events, 8)
+    -- insert 7 bits per level, 7 bits per djinn element
+    local levelbits, djinnbits = bitarray(), bitarray()
+    for i=4,1,-1 do levelbits:write(levels[i],7) end
+    for i=4,1,-1 do djinnbits:write(djinn[i],7) end
+    for i=28,12,-8 do bits:write(levelbits:sub(i-7,i),8) end
+    bits:write(levelbits:sub(1,4),4); bits:write(djinnbits:sub(25,28),4)
+    for i=24,8,-8 do bits:write(djinnbits:sub(i-7,i),8) end
+    
+    for i=8,1,-1 do bits:write(events[i] or 0) end
     
     local sizes = {bronze=9, silver=39, gold=173}
     if not sizes[passwordtier] then passwordtier = "gold" end
     local size = sizes[passwordtier]
 
+    -- if silver or bronze, insert 8 bits representing which of these items your party has
     if passwordtier ~= "gold" then
         local psyitems = {0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF}
         local flags = 0
@@ -101,46 +108,45 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
         end
         bits:write(flags, 8)
     end
-    if passwordtier ~= "bronze" then
+    if passwordtier ~= "bronze" then  -- insert stats
         for i=1,4 do
             local hp, pp, atk, def, agi, lck = unpack(stats[i])
             bits:write(hp, 11); bits:write(pp, 11); bits:write(atk, 10)
             bits:write(def, 10); bits:write(agi, 10); bits:write(lck, 8)
         end
     end
-    if passwordtier == "gold" then
+    if passwordtier == "gold" then  -- insert items and coins
         bits:write(0, 8)
         local counter = 0
-        local stackables = {
+        for i=1,4 do
+            for j, item in pairs(items[i]) do
+                local id = bit.band(item, 0x1FF)
+                bits:write(id, 9)
+                counter = counter + 1
+                if counter == 7 then bits:write(0); counter = 0 end  -- append a 0 bit every 7 items
+            end
+        end
+        local stackables = {  -- list of all stackable items in GS1
             0xB4, 0xB5, 0xB6, 0xB7, 0xBA, 0xBB, 0xBC, 0xBD,
             0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xE2, 0xE3,
             0xE4, 0xE5, 0xEC, 0xEE, 0xEF, 0xF0, 0xF1,
         }
-        local quantities = {}
-        for i=1,4 do
-            local pcquantities = {}
-            for j, item in pairs(items[i]) do
-                local id, quantity = bit.band(item, 0x1FF), bit.rshift(item, 11)
-                bits:write(id, 9)
-                counter = counter + 1
-                if counter == 7 then bits:write(0); counter = 0 end
-                for k, stackid in pairs(stackables) do
-                    if not pcquantities[k] then pcquantities[k] = 0 end
-                    if id == stackid then pcquantities[k] = quantity end
+        for i=1,4 do  -- insert quantities of stackable items for each adept
+            for j=1,#stackables do
+                local quantity = 0
+                for k, item in pairs(items[i]) do
+                    local id = bit.band(item, 0x1FF)
+                    if id == stackables[j] then quantity = bit.rshift(item, 11) end
                 end
-            end
-            table.insert(quantities, pcquantities)
-        end
-        for i=1,4 do
-            for _,quantity in pairs(quantities[i]) do
                 bits:write(quantity, 5)
             end
         end
         bits:write(coins, 24)
     end
 
-    bits:write(0, 8*size - #bits.bits)
+    bits:write(0, 8*size - #bits.bits)  -- append 0's until reaching the correct password size
 
+    -- Encrypt with key 0x1021
     local xsum = 0xFFFF
     for i=0,size-1 do
         local byte = bits:sub(8*i+1, 8*i+8)
@@ -156,43 +162,38 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
     xsum = bit.band(bit.bnot(xsum), 0xFFFF)
     bits:write(bit.rshift(xsum, 8), 8)
     bits:write(bit.band(xsum, 0xFF), 8)
-
     local xorvalue = bit.band(xsum, 0xFF)
     for i=0,size do
         local byte = bits:sub(8*i+1, 8*i+8)
         bits:write(bit.bxor(byte, xorvalue), 8, 8*i+1)
     end
 
-    local out = bitarray()
-    local count = 0
+    -- split into 6-bit entries
+    local out = {}
     local acc = 0
-    local i = 0
-    while i < (size+2)*8 do
-        local entry = bits:sub(i+1, i+6)
-        out:write(entry, 8)
-        count = count + 1
+    for i=1, (size+2)*8, 6 do
+        local entry = bits:sub(i, i+5)
+        table.insert(out, entry)
         acc = acc + entry
-        if count % 10 == 9 then
-            out:write(bit.band(acc, 0x3F), 8)
+        if #out % 10 == 9 then  -- insert checksum for each line
+            table.insert(out, bit.band(acc, 0x3F))
             acc = 0
-            count = count + 1
         end
-        i = i + 6
     end
-    for i=0,count-1 do
-        byte = out:sub(8*i+1, 8*i+8)
-        out:write(bit.band(byte+i, 0x3f), 8, 8*i+1)
+    for i=1,#out do
+        out[i] = bit.band(out[i] + i-1, 0x3f)
     end
 
     local chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz!?#&$%+="
+    for i=1,#out do out[i] = chars:sub(out[i]+1, out[i]+1) end
     local password = {}
-    for i=0,count-1 do
-        local charpos = out:sub(8*i+1, 8*i+8) + 1
-        table.insert(password, chars:sub(charpos, charpos))
-        if i%10 == 9 then table.insert(password, "\n")
-        elseif i%5 == 4 then table.insert(password, " ")
+    for i=1, #out do
+        table.insert(password, out[i])
+        if i % 10 == 0 then table.insert(password, "\n")
+        elseif i % 5 == 0 then table.insert(password, " ")
         end
     end
+
     return table.concat(password)
 end
 
@@ -226,6 +227,7 @@ end
 function inputPassword(password)  -- Thanks to Straylite and Teaman for this function
     local chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz!?#&$%+="
     local addr = 0x0200A74A
+    for i = 0, 259 do memory.writebyte(addr + i, 0x63) end
     for i = 1, #password do
         local letterID = string.find(chars, password:sub(i,i), 1, true)
         if letterID ~= nil then --Skip spaces, line breaks, etc.
@@ -268,14 +270,10 @@ passwordtier = 0
 tierlist = {[0]="Gold", "Silver", "Bronze"}
 guimessage:new(tierlist[passwordtier].." password selected", 120)
 
-file = io.open("gspassword.txt", "r")
-if file == nil then
+if not filecheck("gspassword.txt") then
     io.open("gspassword.txt", "w"):close()
-    password = ""
-else
-    password = file:read("*all")
-    file:close()
 end
+password = readfile("gspassword.txt")
 
 
 while true do
