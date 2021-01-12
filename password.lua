@@ -12,6 +12,13 @@ function getFlag(flag)
 end
 
 
+function set(array)
+    out = {}
+    for i=1,#array do out[array[i]] = true end
+    return out
+end
+
+
 function bitarray()  -- data type for storing binary data
     local function write(self, value, size, pos)
         pos = pos or #self.bits+1
@@ -64,7 +71,7 @@ function getdata()
     events = {
         getFlag(0x941),  -- Save Hammet
         getFlag(0x951),  -- Beat Colosso
-        getFlag(0x8B3),  -- Save Hsu
+        getFlag(0x8B3),  -- Hsu Died
         getFlag(0x8D1),  -- Beat Deadbeard
         getFlag(0x81E),  -- Return to Vale
         getFlag(0x868)   -- Return to Vault
@@ -131,13 +138,11 @@ function getpassword(passwordtier, levels, djinn, events, stats, items, coins)
             0xBF, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xE2, 0xE3,
             0xE4, 0xE5, 0xEC, 0xEE, 0xEF, 0xF0, 0xF1,
         }
-        for i=1,4 do  -- insert quantities of stackable items for each adept
-            for j=1,#stackables do
+        for i, inventory in pairs(items) do  -- insert quantities of stackable items for each adept
+            inventory = set(inventory)
+            for j, id in pairs(stackables) do
                 local quantity = 0
-                for k, item in pairs(items[i]) do
-                    local id = bit.band(item, 0x1FF)
-                    if id == stackables[j] then quantity = bit.rshift(item, 11) end
-                end
+                if inventory[id] then quantity = bit.rshift(item, 11) end
                 bits:write(quantity, 5)
             end
         end
@@ -261,6 +266,7 @@ print("shift+V to paste password directly into game (GS2 only)")
 print("shift+R to cycle through gold, silver, bronze")
 print("shift+P to print most recent password to the console")
 print("shift+O to open password file for direct editing")
+print("    paste the password into the text file, save it, then use shift+V")
 
 
 key = {}
