@@ -12,13 +12,6 @@ function getFlag(flag)
 end
 
 
-function map(array, func)
-    local newarray = {}
-    for k,v in pairs(array) do table.insert(newarray, func(v)) end
-    return newarray
-end
-
-
 function bitarray()  -- data type for storing binary data
     local function write(self, value, size, pos)
         pos = pos or #self.bits+1
@@ -246,51 +239,6 @@ function inputPassword(password)  -- Thanks to Straylite and Teaman for this fun
 end
 
 
-function exportData(filename)
-    local levels, djinn, events, stats, items, coins = getdata()
-    local data = ""
-        .. "Levels\n"
-        .. string.format("%d\t%d\t%d\t%d", unpack(levels))
-        .. "\n\nDjinn\nVenus\tMercury\tMars\tJupiter\n"
-        .. string.format("%02X\t%02X\t%02X\t%02X", unpack(djinn))
-        .. "\n\nEvents\n"
-        .. string.format("%d\t%d\t%d\t%d\t%d\t%d", unpack(events))
-        .. "\n\nStats\nIsaac\tGaret\tIvan\tMia"
-    for i=1,6 do
-        data = string.format("%s\n%d\t%d\t%d\t%d", data, stats[1][i], stats[2][i], stats[3][i], stats[4][i])
-    end
-    data = data.."\n\nItems\nIsaac\tGaret\tIvan\tMia"
-    for i=1,15 do
-        data = string.format("%s\n%04X\t%04X\t%04X\t%04X", data, items[1][i], items[2][i], items[3][i], items[4][i])
-    end
-    data = data.."\n\nCoins\n"..coins
-    writefile(filename, data)
-end
-
-
-function importData(filename)
-    local data = readfile(filename)
-    local levels = map({data:match("Levels\n(.-)\t(.-)\t(.-)\t(.-)\n")}, tonumber)
-    local djinn = {data:match("Djinn\n.-\n(.-)\t(.-)\t(.-)\t(.-)\n")}
-    for k,v in pairs(djinn) do djinn[k] = tonumber("0x"..v) end
-    local events = map({data:match("Events\n(.-)\t(.-)\t(.-)\t(.-)\t(.-)\t(.-)\n")}, tonumber)
-    local stats = {{}, {}, {}, {}}
-    for line in data:match("Stats\n.-\n(.-)\n\n"):gmatch("[^\n]+") do
-        for i,s in pairs({line:match(string.rep("([^\t]+)\t?",4))}) do 
-            table.insert(stats[i], tonumber(s))
-        end
-    end
-    local items = {{}, {}, {}, {}}
-    for line in data:match("Items\n.-\n(.-)\n\n"):gmatch("[^\n]+") do
-        for i,s in pairs({line:match(string.rep("([^\t]+)\t?",4))}) do 
-            table.insert(items[i], tonumber("0x"..s))
-        end
-    end
-    local coins = tonumber(data:match("Coins\n(.-)$"))
-    return levels, djinn, events, stats, items, coins
-end
-
-
 function timedMessage(x, y)
     local function draw(self)
         if self.time > 0 then
@@ -384,25 +332,6 @@ while true do
                 os.execute("start gspassword.txt")
             else
                 print("Error: working directory changed during runtime. Restart script to fix")
-            end
-        end
-        if key["E"] == 1 then
-            if filecheck("password.lua") then
-                exportData("gspassword_export.txt")
-                guimessage:new("Exported data", 120)
-            else
-                print("Error: working directory changed during runtime. Restart script to fix")
-            end
-        end
-        if key["I"] == 1 then
-            if filecheck("gspassword_export.txt") then
-                password = getpassword(tierlist[passwordtier], importData("gspassword_export.txt"))
-                if filecheck("password.lua") then
-                    writefile("gspassword.txt", password)
-                end
-                guimessage:new("Imported data", 120)
-            else
-                print("Error: could not find \"gspassword_export.txt\"")
             end
         end
     end
